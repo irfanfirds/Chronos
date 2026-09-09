@@ -21,38 +21,46 @@ on completely different hosts as long as the console knows the API's URL.
 
 ## API: Render (the config in this repo targets it)
 
-`render.yaml` (at the repo root, one level above `chronos-ai/`) + `Dockerfile` are ready to go:
+`render.yaml` (at the repo root, one level above `chronos-ai/`) + `Dockerfile` are ready to go.
+It targets Render's **free plan on purpose - no credit card required at signup**:
 
 1. Push this repo to GitHub.
 2. In the Render dashboard: **New > Blueprint**, point it at the repo. Render
-   reads `render.yaml` and provisions a web service + a 1GB persistent disk
-   mounted at `/data`.
+   reads `render.yaml` and provisions a free web service (Docker runtime).
 3. Set the two secrets Render will prompt for (marked `sync: false` in
    `render.yaml`, so they're not committed):
    - `GEMINI_API_KEY` - your key from https://aistudio.google.com/apikey
    - `CONSOLE_ORIGINS` - the console's deployed URL once you have it (step
      below) e.g. `https://chronos.vercel.app`. Leave it blank/localhost during
      initial testing and come back to it.
-4. Deploy. First boot seeds the empty disk from the image's baked-in
-   `data/chronos.db` and `models/model.pkl` (via `docker-entrypoint.sh`) - you
-   don't need to upload anything manually.
+4. Deploy. The image already has `data/chronos.db` and `models/model.pkl`
+   baked in, so the 37-race dataset and trained model are there immediately -
+   nothing to upload.
 
-**Why the persistent disk matters:** engineer notes (added via the Decision
-page) are written into the same SQLite file the telemetry lives in. Most
-container platforms wipe the filesystem on every redeploy - without a mounted
-disk, your notes (and any re-ingested data) vanish the next time you push a
-change. The disk is what makes them durable.
+**The free-plan tradeoff:** there's no persistent disk on this plan, so
+`CHRONOS_DB_PATH`/`MODEL_PATH` are left unset in `render.yaml` and the app just
+reads the image's baked-in copies. Those are fine - they're part of the image,
+not the (ephemeral) container filesystem. What does *not* survive a
+restart/redeploy: engineer notes added via the Decision page, and any
+re-ingestion you run against the live container, since both write into that
+same ephemeral filesystem. The free plan also sleeps after ~15 min idle, so
+the first request after a quiet spell takes ~30-60s to wake up.
 
-**Other hosts:** the `Dockerfile` is plain Docker, so Railway, Fly.io, or a
-VPS all work the same way - the only Render-specific piece is `render.yaml`
-itself. On any of them, set `CHRONOS_DB_PATH`/`CHRONOS_MODEL_PATH` to a path on
-that platform's persistent volume equivalent, and re-run `docker-entrypoint.sh`'s
-seed logic (already baked into the image's `ENTRYPOINT`).
+**Upgrading to persistent notes later:** bump `plan: free` to `plan: starter`,
+add back a `disk:` block (`name`, `mountPath: /data`, `sizeGB: 1`), and set
+`CHRONOS_DB_PATH=/data/chronos.db` / `CHRONOS_MODEL_PATH=/data/model.pkl` /
+`CHRONOS_CACHE_DIR=/data/f1_cache` as env vars. `docker-entrypoint.sh` already
+handles seeding a freshly-mounted empty disk from the image on first boot -
+no other changes needed. This does require a paid plan (and therefore a card).
+
+**Other hosts:** the `Dockerfile` is plain Docker, so Railway, Fly.io, a VPS,
+or an Oracle Cloud Always Free VM all work the same way - the only
+Render-specific piece is `render.yaml` itself.
 
 **Ingesting more races post-deploy:** the on-demand `/api/circuit` fetch is
 already live. To pull additional seasons, exec into the running container (or
-run the same image locally against the same disk) and run
-`python app.py ingest-season --years 2027`.
+run the same image locally against the same disk, if you're on a plan with
+one) and run `python app.py ingest-season --years 2027`.
 
 ## Console: Vercel (or any static host)
 

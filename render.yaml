@@ -1,10 +1,22 @@
 # Render Blueprint for the Chronos API. Deploy: push this repo to GitHub, then
 # in the Render dashboard choose "New > Blueprint" and point it at the repo -
 # Render reads this file (must live at the repo root) and provisions the
-# service + disk automatically.
+# service automatically.
 #
 # The app itself lives in chronos-ai/ - dockerContext/dockerfilePath point
 # there since this repo's root is one level above it.
+#
+# Targets Render's FREE plan on purpose (no credit card required at signup).
+# Tradeoff: the free plan has no persistent disk, so CHRONOS_DB_PATH etc. are
+# left unset here - the app falls back to the copies baked into the Docker
+# image (data/chronos.db, models/model.pkl), which are always there fresh on
+# every boot. What does NOT survive a restart/redeploy on this plan: engineer
+# notes added via the Decision page, and any re-ingestion you run against the
+# live container. The free plan also spins the service down after ~15 min
+# idle, so the first request after a quiet period is slow (~30-60s cold
+# start). If you outgrow this, upgrade `plan` to `starter` and add a `disk:`
+# block back (see git history / chronos-ai/DEPLOY.md for the persistent-disk
+# version of this file).
 #
 # The frontend (chronos-ai/console/) is NOT deployed by this file - it's a
 # static build, meant for Vercel/Netlify/Cloudflare Pages instead. See
@@ -15,7 +27,7 @@ services:
     runtime: docker
     dockerContext: ./chronos-ai
     dockerfilePath: ./chronos-ai/Dockerfile
-    plan: starter # smallest plan with a persistent disk; free plan has none
+    plan: free
     envVars:
       - key: GEMINI_API_KEY
         sync: false # set manually in the Render dashboard - never commit this
@@ -23,13 +35,3 @@ services:
         value: gemini-flash-lite-latest
       - key: CONSOLE_ORIGINS
         sync: false # set to your deployed frontend URL, e.g. https://chronos.vercel.app
-      - key: CHRONOS_DB_PATH
-        value: /data/chronos.db
-      - key: CHRONOS_MODEL_PATH
-        value: /data/model.pkl
-      - key: CHRONOS_CACHE_DIR
-        value: /data/f1_cache
-    disk:
-      name: chronos-data
-      mountPath: /data
-      sizeGB: 1
