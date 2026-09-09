@@ -1,17 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRace } from '../RaceContext';
-import {
-  api, ApiError,
-  type ChatTurn, type EngineerNote, type Stint, type LapDetail,
-} from '../apiClient';
-import { executeStrategyQuery, type TraceItem } from '../strategyEngine';
+import { useChat } from '../ChatContext';
+import { api, type EngineerNote, type Stint, type LapDetail } from '../apiClient';
 import { formatDriverName, formatLapTime } from '../format';
 import { playTelemetryBlip } from '../audioEngine.js';
-
-interface ChatMessage extends ChatTurn {
-  trace?: TraceItem[];
-  pending?: boolean;
-}
 
 /** Rolling-window pace trend: mean of the last N laps vs the N before those. */
 function paceTrend(laps: LapDetail[], window = 5): number | null {
@@ -25,11 +17,14 @@ function paceTrend(laps: LapDetail[], window = 5): number | null {
 
 export const DecisionPage: React.FC = () => {
   const { scope, focalDriverNumber, focalDriver, lap, leaderboard } = useRace();
+  const {
+    conversations, activeConversationId, messages, sending, error: chatError,
+    startNew, selectConversation, renameConversation, deleteConversationById, sendMessage,
+  } = useChat();
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const [notes, setNotes] = useState<EngineerNote[] | null>(null);
@@ -52,11 +47,7 @@ export const DecisionPage: React.FC = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Reset the conversation when the subject changes - prior turns were about a
-  // different race/driver and would mislead the agent.
-  useEffect(() => {
-    setMessages([]);
-  }, [scope.year, scope.event, focalDriverNumber]);
+  const activeConversation = conversations?.find((c) => c.id === activeConversationId) ?? null;
 
   const insights = useMemo(() => {
     if (!laps || laps.length === 0) return null;
@@ -69,45 +60,18 @@ export const DecisionPage: React.FC = () => {
     return { best, last, trend, totalLaps: laps.length };
   }, [laps]);
 
-  const sendMessage = async (e?: React.FormEvent) => {
+  const handleSend = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const text = input.trim();
-    if (!text || sending) return;
-
+    if (!text) return;
     playTelemetryBlip();
     setInput('');
-    setChatError(null);
-    setSending(true);
+    sendMessage(text);
+  };
 
-    const history: ChatTurn[] = messages
-      .filter((m) => !m.pending)
-      .map((m) => ({ role: m.role, text: m.text }));
-
-    setMessages((prev) => [
-      ...prev,
-      { role: 'user', text },
-      { role: 'model', text: 'Working…', pending: true },
-    ]);
-
-    try {
-      const result = await executeStrategyQuery(
-        text,
-        {
-          year: scope.year, event: scope.event,
-          driver_number: focalDriverNumber, driver_code: focalDriver?.driver,
-        },
-        history
-      );
-      setMessages((prev) => [
-        ...prev.filter((m) => !m.pending),
-        { role: 'model', text: result.answer, trace: result.trace },
-      ]);
-    } catch (err) {
-      setMessages((prev) => prev.filter((m) => !m.pending));
-      setChatError(err instanceof ApiError ? err.message : 'Agent query failed.');
-    } finally {
-      setSending(false);
-    }
+  const commitRename = () => {
+    if (activeConversationId != null) renameConversation(activeConversationId, titleDraft);
+    setEditingTitle(false);
   };
 
   const submitNote = async (e: React.FormEvent) => {
@@ -149,6 +113,67 @@ export const DecisionPage: React.FC = () => {
           </span>
         </div>
 
+        {/* Conversation topics: switch, start new, or rename the current one.
+            Persisted server-side, so this survives navigating to another page
+            and back, and resuming the same race/driver later. */}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {conversations && conversations.length > 0 && (
+            <select
+              className="bg-black border border-zinc-700 text-acid font-mono text-[10px] px-2 py-1.5 max-w-[9rem] focus:outline-none focus:border-acid"
+              value={activeConversationId ?? ''}
+              onChange={(e) => (e.target.value ? selectConversation(Number(e.target.value)) : startNew())}
+            >
+              <option value="">— select topic —</option>
+              {conversations.map((c) => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            onClick={startNew}
+            className="text-[10px] font-mono text-acid bg-zinc-900 border border-zinc-700 px-2 py-1.5 hover:bg-acid hover:text-black transition-colors"
+          >
+            + NEW TOPIC
+          </button>
+
+          <div className="ml-auto flex items-center gap-1.5 min-w-0">
+            {activeConversationId != null && !editingTitle && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => { setTitleDraft(activeConversation?.title ?? ''); setEditingTitle(true); }}
+                  className="text-[10px] font-mono text-zinc-400 hover:text-acid truncate max-w-[10rem]"
+                  title="Rename this topic"
+                >
+                  ✎ {activeConversation?.title}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteConversationById(activeConversationId)}
+                  className="text-[10px] text-zinc-500 hover:text-red-400 leading-none flex-shrink-0"
+                  title="Delete this topic"
+                >
+                  ✕
+                </button>
+              </>
+            )}
+            {editingTitle && (
+              <input
+                autoFocus
+                value={titleDraft}
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitRename();
+                  if (e.key === 'Escape') setEditingTitle(false);
+                }}
+                className="bg-black border border-acid text-white font-mono text-[10px] px-2 py-1 w-36 focus:outline-none"
+              />
+            )}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto space-y-3 mb-3 min-h-[20rem] max-h-[34rem] pr-1">
           {messages.length === 0 && (
             <div className="border-2 border-dashed border-line p-4 text-[11px] font-mono text-zinc-500 leading-relaxed">
@@ -158,8 +183,8 @@ export const DecisionPage: React.FC = () => {
               </span>{' '}
               at{' '}
               <span className="text-acid">{scope.event ?? '--'}</span>. The agent already knows the
-              race and driver from the selectors, and remembers this conversation — so follow-ups
-              like "what about on hards?" work.
+              race and driver from the selectors. Sending a message starts a new topic you can
+              rename above; switching pages and coming back keeps it right where you left it.
             </div>
           )}
 
@@ -209,7 +234,7 @@ export const DecisionPage: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={sendMessage} className="flex border-2 border-line bg-black">
+        <form onSubmit={handleSend} className="flex border-2 border-line bg-black">
           <input
             className="flex-1 bg-transparent border-0 text-white font-mono text-xs p-3 focus:outline-none"
             placeholder="e.g. Is the undercut on here?"
@@ -384,7 +409,7 @@ export const DecisionPage: React.FC = () => {
                 </span>
                 <button
                   onClick={() => removeNote(n.id)}
-                  className="text-[10px] text-zinc-500 hover:text-red-400 leading-none"
+                  className="text-[10px] text-zinc-500 hover:text-white ml-2"
                   title="Delete note"
                 >
                   ✕

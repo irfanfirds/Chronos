@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRace } from '../RaceContext';
-import { api, type LapDetail, type Stint, type DriverSectorRow } from '../apiClient';
+import { api, type LapDetail, type Stint, type DriverSectorRow, type TeamReportRow } from '../apiClient';
 import { formatDriverName, formatLapTime } from '../format';
 
 const VIEW_W = 900;
@@ -29,6 +29,7 @@ export const AnalysisPage: React.FC = () => {
   const [stints, setStints] = useState<Stint[] | null>(null);
   const [sectors, setSectors] = useState<DriverSectorRow[] | null>(null);
   const [excludeOutliers, setExcludeOutliers] = useState(true);
+  const [teamReport, setTeamReport] = useState<TeamReportRow[] | null>(null);
 
   useEffect(() => {
     if (!scope.event) return;
@@ -39,6 +40,14 @@ export const AnalysisPage: React.FC = () => {
     if (lap) api.sectors(scope, lap).then((r) => !cancelled && setSectors(r.drivers)).catch(() => {});
     return () => { cancelled = true; };
   }, [scope.year, scope.event, focalDriverNumber, lap]);
+
+  useEffect(() => {
+    if (!scope.event) return;
+    let cancelled = false;
+    setTeamReport(null);
+    api.teamReport(scope).then((r) => !cancelled && setTeamReport(r.teams)).catch(() => !cancelled && setTeamReport([]));
+    return () => { cancelled = true; };
+  }, [scope.year, scope.event]);
 
   const stats = useMemo(() => {
     if (!laps || laps.length === 0) return null;
@@ -266,6 +275,67 @@ export const AnalysisPage: React.FC = () => {
             ))}
             {!sectors && <div className="text-[10px] font-mono text-zinc-500">SYNCING...</div>}
           </div>
+        </div>
+      </div>
+
+      {/* Report: every team's real race pace, for problem-solving sessions that
+          need the field picture rather than just one driver. */}
+      <div className="border-2 border-line bg-card p-3">
+        <div className="mb-2 pb-2 border-b border-line">
+          <div className="text-[11px] font-bold text-white uppercase tracking-wider font-mono">
+            Race Report — Team Pace
+          </div>
+          <div className="text-[9px] text-zinc-500 font-mono mt-0.5">
+            Clean-lap average excludes in/out/safety-car laps (&gt;107% of that team's median),
+            same rule as the trace above. Chassis and engine specs aren't published by FastF1, so
+            they aren't shown here — everything below is aggregated from real ingested laps.
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-[10px] font-mono min-w-[640px]">
+            <thead>
+              <tr className="text-zinc-500 uppercase text-[9px] border-b border-line">
+                <th className="text-left py-1.5 pr-2">Team</th>
+                <th className="text-left py-1.5 pr-2">Drivers</th>
+                <th className="text-right py-1.5 pr-2">Best lap</th>
+                <th className="text-right py-1.5 pr-2">Avg clean lap</th>
+                <th className="text-right py-1.5 pr-2">Gap to fastest</th>
+                <th className="text-left py-1.5 pr-2">Primary tyre</th>
+                <th className="text-right py-1.5">Best finish</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(teamReport ?? []).map((t) => {
+                const isFocalTeam = focalDriver?.team === t.team;
+                return (
+                  <tr
+                    key={t.team}
+                    className={`border-b border-line last:border-0 ${isFocalTeam ? 'bg-zinc-900' : ''}`}
+                  >
+                    <td className={`py-1.5 pr-2 ${isFocalTeam ? 'text-acid font-bold' : 'text-white'}`}>{t.team}</td>
+                    <td className="py-1.5 pr-2 text-zinc-400">{t.drivers.join(' / ')}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-white">{t.best_lap_seconds.toFixed(3)}s</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-white">
+                      {t.avg_clean_lap_seconds != null ? `${t.avg_clean_lap_seconds.toFixed(3)}s` : '--'}
+                    </td>
+                    <td className={`py-1.5 pr-2 text-right tabular-nums ${
+                      t.gap_to_fastest_team_seconds === 0 ? 'text-acid font-bold' : 'text-zinc-300'
+                    }`}>
+                      {t.gap_to_fastest_team_seconds != null ? `+${t.gap_to_fastest_team_seconds.toFixed(3)}s` : '--'}
+                    </td>
+                    <td className="py-1.5 pr-2 text-zinc-400">{t.primary_compound ?? '--'}</td>
+                    <td className="py-1.5 text-right text-white">
+                      {t.best_finishing_position != null ? `P${t.best_finishing_position}` : '--'}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!teamReport && (
+                <tr><td colSpan={7} className="py-4 text-center text-zinc-500">SYNCING...</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

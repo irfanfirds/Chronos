@@ -217,6 +217,39 @@ export interface ChatTurn {
   text: string;
 }
 
+export interface ConversationMessage {
+  role: 'user' | 'model';
+  text: string;
+  tool_calls?: ToolCall[] | null;
+}
+
+export interface ConversationSummary {
+  id: number;
+  year: number | null;
+  event_name: string | null;
+  driver_number: string | null;
+  title: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationDetail extends Omit<ConversationSummary, 'message_count'> {
+  messages: ConversationMessage[];
+}
+
+export interface TeamReportRow {
+  team: string;
+  drivers: string[];
+  best_lap_seconds: number;
+  avg_clean_lap_seconds: number | null;
+  laps_completed: number;
+  primary_compound: string | null;
+  compound_breakdown: Record<string, number>;
+  best_finishing_position: number | null;
+  gap_to_fastest_team_seconds: number | null;
+}
+
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
     super(message);
@@ -314,6 +347,35 @@ export const api = {
     request<{ deleted: number }>(`/api/notes/${id}`, { method: 'DELETE' }),
 
   simulationOptions: () => request<SimulationOptions>('/api/simulate/options'),
+
+  teamReport: (scope: RaceScope = {}) =>
+    request<{ year: number; event: string; teams: TeamReportRow[] }>(
+      `/api/team-report${qs({ year: scope.year, event: scope.event })}`
+    ),
+
+  conversations: (scope: RaceScope = {}, driverNumber?: string) =>
+    request<{ conversations: ConversationSummary[] }>(
+      `/api/conversations${qs({ year: scope.year, event: scope.event, driver_number: driverNumber })}`
+    ),
+
+  conversation: (id: number) => request<ConversationDetail>(`/api/conversations/${id}`),
+
+  createConversation: (body: { year?: number; event?: string; driver_number?: string; title?: string }) =>
+    request<ConversationDetail>('/api/conversations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  updateConversation: (id: number, body: { title?: string; messages?: ConversationMessage[] }) =>
+    request<ConversationDetail>(`/api/conversations/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+
+  deleteConversation: (id: number) =>
+    request<{ deleted: number }>(`/api/conversations/${id}`, { method: 'DELETE' }),
 
   simulate: (body: {
     event: string;

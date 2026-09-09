@@ -14,13 +14,14 @@ when the caller doesn't specify one.
 """
 import os
 import sqlite3
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from src import conversations_store
 from src import notes_store
 from src import telemetry_analytics as analytics
 from src.agent_engine import run_agent_query
@@ -40,7 +41,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get('CONSOLE_ORIGINS', '').split(',') if os.environ.get('CONSOLE_ORIGINS') else [],
     allow_origin_regex=r'http://(localhost|127\.0\.0\.1):\d+',
-    allow_methods=['GET', 'POST', 'DELETE'],
+    allow_methods=['GET', 'POST', 'PUT', 'DELETE'],
     allow_headers=['*'],
 )
 
@@ -69,6 +70,24 @@ class NoteRequest(BaseModel):
     driver_number: Optional[str] = None
     lap: Optional[int] = None
     category: str = 'general'
+
+
+class ConversationMessage(BaseModel):
+    role: str
+    text: str
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+
+
+class ConversationCreateRequest(BaseModel):
+    year: Optional[int] = None
+    event: Optional[str] = None
+    driver_number: Optional[str] = None
+    title: str = 'New conversation'
+
+
+class ConversationUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    messages: Optional[List[ConversationMessage]] = None
 
 
 class SimulationRequest(BaseModel):
@@ -312,3 +331,52 @@ def simulate_options():
     """Circuits and compounds the model can actually simulate - the sandbox's
     dropdowns are built from this so a user can't pick an untrained scenario."""
     return {'events': list_trained_events(), 'compounds': list_trained_compounds()}
+
+
+@app.get('/api/team-report')
+def team_report(year: Optional[int] = None, event: Optional[str] = None):
+    """Per-team pace/strategy report for one race - see telemetry_analytics.get_team_report
+    for exactly what is and isn't included (no fabricated chassis/engine specs)."""
+    y, e = _resolve_event(year, event)
+    return {'year': y, 'event': e, 'teams': analytics.get_team_report(y, e)}
+
+
+@app.get('/api/conversations')
+def list_conversations(year: Optional[int] = None, event: Optional[str] = None, driver_number: Optional[str] = None):
+    """Conversation threads for a (race, driver) scope, most-recently-updated first -
+    powers the Decision page's conversation list."""
+    return {'conversations': conversations_store.list_conversations(year, event, driver_number)}
+
+
+@app.get('/api/conversations/{conversation_id}')
+def get_conversation(conversation_id: int):
+    try:
+        return conversations_store.get_conversation(conversation_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.post('/api/conversations')
+def create_conversation(body: ConversationCreateRequest):
+    return conversations_store.create_conversation(
+        title=body.title, year=body.year, event_name=body.event, driver_number=body.driver_number,
+    )
+
+
+@app.put('/api/conversations/{conversation_id}')
+def update_conversation(conversation_id: int, body: ConversationUpdateRequest):
+    try:
+        return conversations_store.update_conversation(
+            conversation_id,
+            title=body.title,
+            messages=[m.model_dump() for m in body.messages] if body.messages is not None else None,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@app.delete('/api/conversations/{conversation_id}')
+def remove_conversation(conversation_id: int):
+    if not conversations_store.delete_conversation(conversation_id):
+        raise HTTPException(status_code=404, detail=f'No conversation with id {conversation_id}')
+    return {'deleted': conversation_id}

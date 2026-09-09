@@ -20,6 +20,11 @@ export interface TraceItem {
 export interface StrategyResult {
   answer: string;
   trace: TraceItem[];
+  /** Raw tool calls, kept alongside the derived `trace` so a caller that persists
+   *  this turn (e.g. a saved conversation) can store them and rebuild an
+   *  identical `trace` later via `toTraceItems()`, rather than losing that
+   *  fidelity to only the display-formatted strings. */
+  toolCalls: ToolCall[];
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -55,7 +60,7 @@ function formatResult(call: ToolCall): string {
   return typeof raw === 'string' ? raw : JSON.stringify(raw);
 }
 
-function toTraceItems(toolCalls: ToolCall[]): TraceItem[] {
+export function toTraceItems(toolCalls: ToolCall[]): TraceItem[] {
   return toolCalls.map((call, i) => {
     const resultText = formatResult(call);
     return {
@@ -76,5 +81,5 @@ export async function executeStrategyQuery(
   history?: ChatTurn[]
 ): Promise<StrategyResult> {
   const response = await api.agentQuery(prompt, context, history);
-  return { answer: response.answer, trace: toTraceItems(response.tool_calls) };
+  return { answer: response.answer, trace: toTraceItems(response.tool_calls), toolCalls: response.tool_calls };
 }

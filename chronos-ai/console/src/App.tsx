@@ -2,6 +2,7 @@ import React from 'react';
 import { createHashRouter, RouterProvider } from 'react-router-dom';
 import { AppShell } from './AppShell';
 import { RaceProvider } from './RaceContext';
+import { ChatProvider } from './ChatContext';
 import { OverviewPage } from './pages/OverviewPage';
 import { DecisionPage } from './pages/DecisionPage';
 import { CarPage } from './pages/CarPage';
@@ -27,7 +28,9 @@ const router = createHashRouter([
 export default function App() {
   return (
     <RaceProvider>
-      <RouterProvider router={router} />
+      <ChatProvider>
+        <RouterProvider router={router} />
+      </ChatProvider>
     </RaceProvider>
   );
 }

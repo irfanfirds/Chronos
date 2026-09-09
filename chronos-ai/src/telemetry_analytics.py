@@ -229,6 +229,54 @@ def get_sector_insights(
     return {'lap': lap, 'drivers': drivers}
 
 
+def get_team_report(year: int, event_name: str, db_path: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Real, per-team pace and strategy summary for one race - the analytical
+    report section. Every number here is aggregated directly from ingested laps;
+    nothing about chassis, engine supplier, or car specs is included, since
+    FastF1 doesn't publish those and this project doesn't state facts it can't
+    verify from real ingested data (see README - "Honesty about what's real").
+    """
+    df = _load_race(year, event_name, db_path)
+    if df.empty:
+        return []
+
+    final_lap = int(df['LapNumber'].max())
+    rows = []
+    for team, group in df.groupby('Team'):
+        times = pd.to_numeric(group['LapTimeSeconds'], errors='coerce').dropna()
+        if times.empty:
+            continue
+        median = times.median()
+        clean = times[times <= median * 1.07]  # strips in/out/SC laps, same rule as the Analysis page
+
+        compound_counts = group['Compound'].value_counts()
+        finish_rows = group[group['LapNumber'] == final_lap]
+        best_finish = (
+            int(finish_rows['Position'].min()) if not finish_rows.empty and finish_rows['Position'].notna().any() else None
+        )
+
+        rows.append({
+            'team': team,
+            'drivers': sorted(group['Driver'].unique().tolist()),
+            'best_lap_seconds': round(float(times.min()), 3),
+            'avg_clean_lap_seconds': round(float(clean.mean()), 3) if not clean.empty else None,
+            'laps_completed': int(group['LapNumber'].nunique()),
+            'primary_compound': str(compound_counts.idxmax()) if not compound_counts.empty else None,
+            'compound_breakdown': {str(k): int(v) for k, v in compound_counts.items()},
+            'best_finishing_position': best_finish,
+        })
+
+    fastest = min((r['avg_clean_lap_seconds'] for r in rows if r['avg_clean_lap_seconds'] is not None), default=None)
+    for r in rows:
+        r['gap_to_fastest_team_seconds'] = (
+            round(r['avg_clean_lap_seconds'] - fastest, 3)
+            if fastest is not None and r['avg_clean_lap_seconds'] is not None else None
+        )
+
+    rows.sort(key=lambda r: (r['avg_clean_lap_seconds'] is None, r['avg_clean_lap_seconds']))
+    return rows
+
+
 def get_circuit_map(year: int, event_name: str, db_path: Optional[str] = None) -> Dict[str, Any]:
     """Real X/Y track outline + detected corner apexes, if fetch_circuit_telemetry
     has been run for this race (it's fetched on demand, not for every ingested race -

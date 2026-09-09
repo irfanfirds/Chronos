@@ -35,6 +35,12 @@ one - every row has a Year and EventName (e.g. "Monaco Grand Prix"). Rules:
 - The Driver column holds three-letter codes (HAM, VER); DriverNumber holds car numbers ("44").
 - If a question is missing something you need that the context block doesn't supply, say
   what is missing instead of guessing.
+- This may be a multi-turn conversation - prior turns are included below the newest message.
+  Do not treat something claimed in an earlier turn as still true without checking: if this
+  question needs a lap time, tyre state, gap, or position and you have not already fetched
+  that exact fact earlier in THIS conversation, query or predict it again rather than
+  recalling it from memory. State changes lap to lap (a tyre ages, a gap closes); a fact
+  fetched five turns ago about "the current lap" is not the same fact anymore.
 - Close with a clear recommendation and the numbers that justify it."""
 
 
