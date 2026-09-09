@@ -1,0 +1,10 @@
+fastf1>=3.0.0
+pandas>=1.5
+numpy>=1.23
+scikit-learn>=1.2
+joblib>=1.2
+google-genai>=0.5
+fastapi>=0.110
+uvicorn[standard]>=0.29
+streamlit>=1.30
+python-dotenv>=1.0.0

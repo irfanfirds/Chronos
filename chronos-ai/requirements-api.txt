@@ -1,0 +1,13 @@
+# Lean dependency set for deploying api/main.py - excludes streamlit, which is
+# only needed for the standalone streamlit_app.py demo entrypoint and isn't part
+# of the API's import graph. Used by Dockerfile; local dev should keep using
+# requirements.txt so the CLI, API, and Streamlit demo all work from one venv.
+fastf1>=3.0.0
+pandas>=1.5
+numpy>=1.23
+scikit-learn>=1.2
+joblib>=1.2
+google-genai>=0.5
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-dotenv>=1.0.0

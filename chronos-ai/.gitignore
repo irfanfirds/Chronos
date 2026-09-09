@@ -1,0 +1,24 @@
+# Secrets
+.env
+
+# Data & caches
+# chronos.db and model.pkl ARE committed on purpose (~29MB total, well under
+# GitHub's 100MB limit) - the Dockerfile bakes them in as deployment seed data
+# (see DEPLOY.md), and docker-entrypoint.sh copies them onto a fresh persistent
+# disk on first boot. Only stray/scratch db and model files are ignored here.
+data/*.db
+!data/chronos.db
+data/*.sqlite*
+models/*
+!models/model.pkl
+f1_cache/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store

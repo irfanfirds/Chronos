@@ -1,0 +1,35 @@
+# Render Blueprint for the Chronos API. Deploy: push this repo to GitHub, then
+# in the Render dashboard choose "New > Blueprint" and point it at the repo -
+# Render reads this file (must live at the repo root) and provisions the
+# service + disk automatically.
+#
+# The app itself lives in chronos-ai/ - dockerContext/dockerfilePath point
+# there since this repo's root is one level above it.
+#
+# The frontend (chronos-ai/console/) is NOT deployed by this file - it's a
+# static build, meant for Vercel/Netlify/Cloudflare Pages instead. See
+# chronos-ai/DEPLOY.md.
+services:
+  - type: web
+    name: chronos-api
+    runtime: docker
+    dockerContext: ./chronos-ai
+    dockerfilePath: ./chronos-ai/Dockerfile
+    plan: starter # smallest plan with a persistent disk; free plan has none
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # set manually in the Render dashboard - never commit this
+      - key: GEMINI_MODEL
+        value: gemini-flash-lite-latest
+      - key: CONSOLE_ORIGINS
+        sync: false # set to your deployed frontend URL, e.g. https://chronos.vercel.app
+      - key: CHRONOS_DB_PATH
+        value: /data/chronos.db
+      - key: CHRONOS_MODEL_PATH
+        value: /data/model.pkl
+      - key: CHRONOS_CACHE_DIR
+        value: /data/f1_cache
+    disk:
+      name: chronos-data
+      mountPath: /data
+      sizeGB: 1

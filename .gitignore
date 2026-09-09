@@ -1,0 +1,8 @@
+# OS
+.DS_Store
+
+# Source/scratch assets at the project root only (leading slash anchors these -
+# do NOT broaden to a bare "*.glb", which would also match and exclude the
+# copy the app actually loads at chronos-ai/console/public/models/f1_car_2026.glb).
+/2026_f1_car_v3_redesign.glb
+/chronos-f1-strategy-console.zip
