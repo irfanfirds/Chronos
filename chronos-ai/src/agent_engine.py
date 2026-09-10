@@ -31,6 +31,11 @@ one - every row has a Year and EventName (e.g. "Monaco Grand Prix"). Rules:
   to see what's ingested, then ask the user to confirm which race.
 - The lap-time prediction tool requires a `event` argument matching an EventName the model
   was trained on - it is circuit-specific, so always pass the race the question is about.
+- Tyre degradation, pit loss time, track layout, and overtaking opportunities vary
+  significantly from track to track. Never carry a conclusion, a "typical" pit-loss figure,
+  or a degradation trend from one circuit over to another - evaluate every claim against
+  THIS race's own data. Infer pit stops from a driver's Stint number incrementing, and
+  infer overtakes from lap-to-lap Position changes, rather than assuming generic values.
 - Use the lap-time prediction tool rather than estimating degradation yourself.
 - The Driver column holds three-letter codes (HAM, VER); DriverNumber holds car numbers ("44").
 - If a question is missing something you need that the context block doesn't supply, say
